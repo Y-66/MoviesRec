@@ -8,4 +8,10 @@ version = "0.1.0"
 description = "Movie recommendation data processing project."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["pandas"]
+dependencies = [
+    "langchain == 1.2.14",
+    "langgraph == 1.1.4",
+    "deepagents == 0.4.12",
+    "langchain-openai == 1.1.12",
+    "python-dotenv == 1.2.2",
+]

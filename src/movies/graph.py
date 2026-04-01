@@ -1,33 +1,37 @@
+from langgraph.graph import StateGraph, START, END
+from movies.states.state import AgentState
+from movies.nodes.intent_node import analyze_intent, route_intent
+from movies.nodes.sql_filter_node import sql_filter
+from movies.nodes.cf_node import collaborative_filter
+from movies.nodes.diversity_node import diversity_filter
+from movies.nodes.summarize_node import summarize
 
-import sys
-from pathlib import Path
-
-current_file = Path(__file__).resolve()
-src_path = current_file.parents[1] 
-if str(src_path) not in sys.path:
-    sys.path.insert(0, str(src_path))
-
-from dotenv import load_dotenv
-load_dotenv()
-
-from movies.agents.intent_analyzer import intent_analyzer
-from langchain_core.messages import HumanMessage, SystemMessage
-
-if __name__ == "__main__":
-
-    print("程序开始运行...") # 添加一行打印来确认进入了主函数
+def build_graph(checkpointer=None):
+    workflow = StateGraph(AgentState)
     
-    messages = [
-        SystemMessage(content="You are a Intent analyzer expert"),
-        HumanMessage(content="Write a haiku about spring"),
-    ]
+    workflow.add_node("intent_analyzer", analyze_intent)
+    workflow.add_node("sql_filter", sql_filter)
+    workflow.add_node("collaborative_filter", collaborative_filter)
+    workflow.add_node("diversity_filter", diversity_filter)
+    workflow.add_node("summarizer", summarize)
     
-    # 注意：invoke 是同步阻塞的，必须 print 它的返回值才能看到输出
-    result = intent_analyzer.invoke(
+    workflow.add_edge(START, "intent_analyzer")
+    
+    workflow.add_conditional_edges(
+        "intent_analyzer",
+        route_intent,
         {
-            "messages": messages
-        },
+            "sql_filter": "sql_filter",
+            "collaborative_filter": "collaborative_filter",
+            "summarize": "summarizer"
+        }
     )
     
-    print("--- 运行结果 ---")
-    print(result)
+    workflow.add_edge("sql_filter", "collaborative_filter")
+    workflow.add_edge("collaborative_filter", "diversity_filter")
+    workflow.add_edge("diversity_filter", "summarizer")
+    workflow.add_edge("summarizer", END)
+    
+    return workflow.compile(checkpointer=checkpointer)
+
+app = build_graph()

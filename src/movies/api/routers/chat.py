@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
+import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List
 
 from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
@@ -41,12 +46,43 @@ def _get_base_dir(request: Request) -> Path:
     return request.app.state.base_dir
 
 
+def _infer_stage_trace(state: Dict[str, Any]) -> List[str]:
+    trace = ["intent_analyzer"]
+    intent_data = state.get("intent_data", {}) or {}
+
+    if intent_data.get("intent") == "unrelated":
+        trace.append("summarizer")
+        return trace
+
+    hard_filters = intent_data.get("hard_filters") or {}
+    if hard_filters:
+        trace.append("sql_filter")
+
+    trace.extend(["collaborative_filter", "diversity_filter", "summarizer"])
+    return trace
+
+
+def _sse(event: str, data: Dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _chunk_text(text: str, size: int = 24) -> Iterator[str]:
+    if not text:
+        return
+    for i in range(0, len(text), size):
+        yield text[i : i + size]
+
+
 @router.post("", response_model=ChatResponse, status_code=status.HTTP_200_OK)
 async def chat_endpoint(
     request: ChatRequest,
     http_request: Request,
 ) -> ChatResponse:
     try:
+        started_at = time.perf_counter()
+        created_at = datetime.now(timezone.utc).isoformat()
+        request_id = str(uuid.uuid4())
+
         agent = _get_agent(http_request)
         base_dir = _get_base_dir(http_request)
 
@@ -57,14 +93,168 @@ async def chat_endpoint(
         result = agent.invoke(inputs, config)  # type: ignore[arg-type]
         full_messages = result.get("messages", inputs["messages"])
         save_session_history(session_id, full_messages, base_dir=base_dir)
+        stage_trace = _infer_stage_trace(result)
+
+        recommendations = result.get("final_recommendations", []) or []
+        if not isinstance(recommendations, list):
+            recommendations = []
 
         ai_reply = next(
             (_content_to_text(msg.content) for msg in reversed(full_messages) if isinstance(msg, AIMessage)),
             "I am a Movie Recommendation Robot. How can I help you with movies today?",
         )
-        return ChatResponse(response=ai_reply, intent_data=result.get("intent_data", {}))
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+
+        return ChatResponse(
+            session_id=session_id,
+            request_id=request_id,
+            created_at=created_at,
+            response=ai_reply,
+            latency_ms=latency_ms,
+            message_count=len(full_messages),
+            stage_trace=stage_trace,
+            recommendation_count=len(recommendations),
+            recommendation_cards=recommendations,
+            intent_data=result.get("intent_data", {}),
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/stream", status_code=status.HTTP_200_OK)
+async def chat_stream_endpoint(request: ChatRequest, http_request: Request) -> StreamingResponse:
+    agent = _get_agent(http_request)
+    base_dir = _get_base_dir(http_request)
+    session_id = request.session_id or "default"
+
+    async def event_generator():
+        started_at = time.perf_counter()
+        created_at = datetime.now(timezone.utc).isoformat()
+        request_id = str(uuid.uuid4())
+
+        yield _sse(
+            "start",
+            {
+                "request_id": request_id,
+                "session_id": session_id,
+                "created_at": created_at,
+            },
+        )
+
+        try:
+            inputs: Dict[str, Any] = {"messages": [HumanMessage(content=request.user_input)]}
+            config: RunnableConfig = {"configurable": {"thread_id": session_id}}
+
+            # Stream node-level progress and custom token events from graph nodes.
+            observed_stages: List[str] = []
+            streamed_state: Dict[str, Any] = {}
+            saw_token_events = False
+            for mode, chunk in agent.stream(inputs, config, stream_mode=["updates", "custom"]):  # type: ignore[arg-type]
+                if mode == "updates" and isinstance(chunk, dict):
+                    for stage_name, payload in chunk.items():
+                        if stage_name not in observed_stages:
+                            observed_stages.append(stage_name)
+                        if isinstance(payload, dict):
+                            streamed_state.update(payload)
+                        yield _sse(
+                            "stage",
+                            {
+                                "request_id": request_id,
+                                "session_id": session_id,
+                                "stage": stage_name,
+                            },
+                        )
+                elif mode == "custom" and isinstance(chunk, dict):
+                    if chunk.get("type") == "token":
+                        saw_token_events = True
+                        yield _sse(
+                            "token",
+                            {
+                                "request_id": request_id,
+                                "session_id": session_id,
+                                "text": chunk.get("text", ""),
+                            },
+                        )
+
+            # Always prefer canonical thread state from checkpointer after stream run.
+            result: Dict[str, Any] = {}
+            try:
+                snapshot = agent.get_state(config)  # type: ignore[attr-defined]
+                values = getattr(snapshot, "values", None)
+                if isinstance(values, dict):
+                    result = values
+            except Exception:
+                result = {}
+
+            # Fallback hierarchy for robustness.
+            if "messages" not in result and "messages" in streamed_state:
+                result = streamed_state
+            if "messages" not in result:
+                result = agent.invoke(inputs, config)  # type: ignore[arg-type]
+            full_messages = result.get("messages", streamed_state.get("messages", inputs["messages"]))
+            save_session_history(session_id, full_messages, base_dir=base_dir)
+
+            ai_reply = next(
+                (_content_to_text(msg.content) for msg in reversed(full_messages) if isinstance(msg, AIMessage)),
+                "I am a Movie Recommendation Robot. How can I help you with movies today?",
+            )
+
+            # Fallback chunking if model token events were not available.
+            if not saw_token_events:
+                for chunk in _chunk_text(ai_reply):
+                    yield _sse(
+                        "token",
+                        {
+                            "request_id": request_id,
+                            "session_id": session_id,
+                            "text": chunk,
+                        },
+                    )
+
+            recommendations = result.get("final_recommendations", []) or []
+            if not isinstance(recommendations, list):
+                recommendations = []
+
+            stage_trace = observed_stages or _infer_stage_trace(result)
+            latency_ms = int((time.perf_counter() - started_at) * 1000)
+
+            yield _sse(
+                "final",
+                {
+                    "session_id": session_id,
+                    "request_id": request_id,
+                    "created_at": created_at,
+                    "response": ai_reply,
+                    "latency_ms": latency_ms,
+                    "message_count": len(full_messages),
+                    "stage_trace": stage_trace,
+                    "recommendation_count": len(recommendations),
+                    "recommendation_cards": recommendations,
+                    "intent_data": result.get("intent_data", {}),
+                },
+            )
+
+            yield _sse("done", {"request_id": request_id, "session_id": session_id})
+        except Exception as exc:
+            yield _sse(
+                "error",
+                {
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "detail": str(exc),
+                },
+            )
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Content-Encoding": "identity",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/sessions", response_model=List[SessionSummary], status_code=status.HTTP_200_OK)

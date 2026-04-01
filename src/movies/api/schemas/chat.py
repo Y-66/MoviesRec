@@ -11,7 +11,15 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    session_id: str
+    request_id: str
+    created_at: str
     response: str
+    latency_ms: int
+    message_count: int
+    stage_trace: List[str] = Field(default_factory=list)
+    recommendation_count: int = 0
+    recommendation_cards: List[Dict[str, Any]] = Field(default_factory=list)
     intent_data: Optional[Dict[str, Any]] = None
 
 

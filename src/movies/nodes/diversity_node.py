@@ -1,3 +1,5 @@
+import time
+
 from movies.states.state import AgentState
 
 def diversity_filter(state: AgentState) -> dict:
@@ -6,6 +8,7 @@ def diversity_filter(state: AgentState) -> dict:
     # Placeholder: Implement Diversity algorithm.
     # E.g., select movies with different sub-genres or random factors to diversify.
     print(f"Applying diversity to: {cf_recommendations}")
+    time.sleep(3)
     
     # Using the same for now
     final_recs = cf_recommendations

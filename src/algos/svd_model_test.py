@@ -4,24 +4,37 @@ import json
 from typing import List, Dict
 from surprise import SVD
 from surprise import dump
-
+from pathlib import Path
 
 class SVDRecommenderPredictor:
-    def __init__(self, model_path: str = "datasets/svd_model.pkl"):
+    def __init__(self, model_rel_path: str = "models/svd_model.pkl"):
         """
         SVD 模型加载与预测器
         """
-        self.model_path = model_path
+        # 使用封装的方法获取根目录
+        self.root_path = self._get_project_root()
+        # 拼接完整的模型路径
+        self.model_path = self.root_path / model_rel_path
         self.algo = None
+
+    @staticmethod
+    def _get_project_root() -> Path:
+        """
+        封装获取项目根目录的方法
+        假设脚本位置: Project_Root/src/algos/test_svd.py
+        """
+        return Path(__file__).resolve().parents[2]
 
     def load_model(self):
         """
         加载已经训练好的模型
         """
-        if not os.path.exists(self.model_path):
+        # 使用 pathlib 的 exists() 方法
+        if not self.model_path.exists():
             raise FileNotFoundError(f"找不到模型文件: {self.model_path}。请先运行 train_svd.py。")
 
-        _, self.algo = dump.load(self.model_path)
+        # 转换为字符串路径以确保兼容性，并加载模型
+        _, self.algo = dump.load(str(self.model_path))
         print(f"成功从 {self.model_path} 加载 SVD 模型。")
 
 
@@ -33,19 +46,6 @@ def get_collaborative_candidates(
 ) -> List[Dict]:
     """
     根据硬过滤结果进行 SVD 协同过滤打分并排序。
-
-    参数:
-        algo (SVD): 已经加载的 Surprise SVD 模型实例。
-        user_id (int): 目标用户的 ID [cite: 27]。
-        candidate_movie_ids (List[int]): 硬过滤输出的 ID 列表，仅对这个列表中的电影进行协同过滤算法 [cite: 28]。
-        top_k (int, 可选): 召回的数量（例如先选出 10 部），默认为 10 [cite: 29]。
-
-    输出:
-        List[Dict]: 排名前k个电影id及其评分 [cite: 30, 31]。格式如:
-        [
-            {"movie_id": 12, "svd_score": 4.5},
-            {"movie_id": 13, "svd_score": 3.7}
-        ]
     """
     if algo is None:
         raise ValueError("SVD 模型未加载，请先传入有效的 algo 实例。")
@@ -76,13 +76,10 @@ if __name__ == "__main__":
         predictor.load_model()
     except FileNotFoundError as e:
         print(e)
-        exit(1)  # 如果模型没找到，直接退出，提示用户先去运行训练脚本
+        exit(1)  # 如果模型没找到，直接退出
 
     # 2. 模拟输入数据
-    # 假设我们要为 user_id = 1 推荐 [cite: 27]
     target_user_id = 1
-
-    # 假设这些是经过"召回层 (SQLite硬规则过滤)"后剩下的电影 ID 列表 [cite: 28]
     hard_filtered_movie_ids = [1, 50, 110, 260, 318, 527, 593, 858, 1196, 1210, 2571, 2959, 356, 4993, 7153]
 
     # 3. 调用核心函数得到排序结果

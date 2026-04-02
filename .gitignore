@@ -24,3 +24,4 @@ ENV/
 datasets/
 chat_history/
 tests/
+models/

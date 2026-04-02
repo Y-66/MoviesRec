@@ -9,11 +9,14 @@ description = "Movie recommendation data processing project."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "langchain",
-    "langgraph",
+    "langchain == 1.2.14",
+    "langgraph == 1.1.4",
     "deepagents == 0.4.12",
     "langchain-openai == 1.1.12",
     "python-dotenv == 1.2.2",
     "fastapi == 0.135.2",
     "uvicorn == 0.42.0",
+    "scikit-surprise == 1.1.4",
+    "numpy == 1.26.4",
+    "pandas == 3.0.2",
 ]

@@ -1,51 +1,66 @@
-# train_svd.py
 import pandas as pd
 import os
 from surprise import Dataset, Reader, SVD
 from surprise import dump
-
+from pathlib import Path
 
 class SVDRecommenderTrainer:
-    def __init__(self, model_path: str = "datasets/svd_model.pkl"):
+    def __init__(self, model_rel_path: str = "models/svd_model.pkl"):
         """
         SVD 模型训练器
         """
-        self.model_path = model_path
+        # 统一使用封装的方法获取根目录
+        self.root_path = self._get_project_root()
+        
+        # 拼接完整的模型保存路径
+        self.model_path = self.root_path / model_rel_path
         self.algo = None
 
-    def train_and_save_model(self, ratings_file: str = "datasets/ratings.csv"):
+    @staticmethod
+    def _get_project_root() -> Path:
         """
-        离线训练：读取原始的 ratings.csv 训练 SVD 模型，并保存到本地
+        封装获取项目根目录的方法
+        假设脚本位置: Project_Root/src/algos/train_svd.py
         """
-        if not os.path.exists(ratings_file):
-            raise FileNotFoundError(f"找不到评分数据文件: {ratings_file}。请确保路径正确。")
+        return Path(__file__).resolve().parents[2]
 
-        print(f"正在从 {ratings_file} 加载评分数据...")
-        # SVD 只需要 userId, movieId, rating 这三列原始交互数据
-        df = pd.read_csv(ratings_file, usecols=['userId', 'movieId', 'rating'])
+    def train_and_save_model(self, ratings_rel_path: str = "datasets/ratings.csv"):
+        """
+        离线训练：自动定位数据集并保存模型
+        """
+        # 1. 自动定位评分文件绝对路径
+        full_ratings_path = self.root_path / ratings_rel_path
 
-        # 定义评分范围（通常是 0.5 到 5.0）
+        if not full_ratings_path.exists():
+            raise FileNotFoundError(f"找不到评分数据文件: {full_ratings_path}")
+
+        print(f"正在加载评分数据: {full_ratings_path}")
+        
+        # 2. 读取数据 (建议显式指定 str 路径以确保兼容性)
+        df = pd.read_csv(str(full_ratings_path), usecols=['userId', 'movieId', 'rating'])
+
+        # 3. 准备数据格式
         reader = Reader(rating_scale=(0.5, 5.0))
-
-        # 将 DataFrame 转换为 Surprise 支持的数据集格式
         data = Dataset.load_from_df(df[['userId', 'movieId', 'rating']], reader)
 
         print("正在构建全量训练集...")
         trainset = data.build_full_trainset()
 
-        print("正在训练 SVD 模型 (这可能需要几分钟时间)...")
-        # 初始化 SVD 算法模型
+        print("正在训练 SVD 模型...")
         self.algo = SVD()
         self.algo.fit(trainset)
 
-        print(f"模型训练完成！正在保存至 {self.model_path}...")
-        # 确保 datasets 文件夹存在
-        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
-        dump.dump(self.model_path, algo=self.algo)
+        # 4. 保存模型
+        print(f"训练完成！正在保存至: {self.model_path}")
+        
+        # 确保父级目录存在
+        self.model_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 保存模型
+        dump.dump(str(self.model_path), algo=self.algo)
         print("模型保存成功！")
 
-
 if __name__ == "__main__":
-    # 执行训练
     trainer = SVDRecommenderTrainer()
+    # 无需手动传参，它会自动去找 [根目录]/datasets/ratings.csv
     trainer.train_and_save_model()

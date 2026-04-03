@@ -146,24 +146,53 @@ async def chat_stream_endpoint(request: ChatRequest, http_request: Request) -> S
             config: RunnableConfig = {"configurable": {"thread_id": session_id}}
 
             # Stream node-level progress and custom token events from graph nodes.
-            observed_stages: List[str] = []
+            observed_stages: List[str] = ["intent_analyzer"]
             streamed_state: Dict[str, Any] = {}
             saw_token_events = False
+            
+            # initial stage is always intent_analyzer
+            yield _sse(
+                "stage",
+                {
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "stage": "intent_analyzer",
+                },
+            )
+
             for mode, chunk in agent.stream(inputs, config, stream_mode=["updates", "custom"]):  # type: ignore[arg-type]
                 if mode == "updates" and isinstance(chunk, dict):
                     for stage_name, payload in chunk.items():
-                        if stage_name not in observed_stages:
-                            observed_stages.append(stage_name)
                         if isinstance(payload, dict):
                             streamed_state.update(payload)
-                        yield _sse(
-                            "stage",
-                            {
-                                "request_id": request_id,
-                                "session_id": session_id,
-                                "stage": stage_name,
-                            },
-                        )
+                        
+                        # Infer next stage dynamically to keep frontend in sync
+                        next_stage = None
+                        if stage_name == "intent_analyzer":
+                            intent_data = streamed_state.get("intent_data", {})
+                            if intent_data.get("intent") == "unrelated":
+                                next_stage = "summarizer"
+                            elif not intent_data.get("hard_filters"):
+                                next_stage = "collaborative_filter"
+                            else:
+                                next_stage = "sql_filter"
+                        elif stage_name == "sql_filter":
+                            next_stage = "collaborative_filter"
+                        elif stage_name == "collaborative_filter":
+                            next_stage = "diversity_filter"
+                        elif stage_name == "diversity_filter":
+                            next_stage = "summarizer"
+                            
+                        if next_stage and next_stage not in observed_stages:
+                            observed_stages.append(next_stage)
+                            yield _sse(
+                                "stage",
+                                {
+                                    "request_id": request_id,
+                                    "session_id": session_id,
+                                    "stage": next_stage,
+                                },
+                            )
                 elif mode == "custom" and isinstance(chunk, dict):
                     if chunk.get("type") == "token":
                         saw_token_events = True

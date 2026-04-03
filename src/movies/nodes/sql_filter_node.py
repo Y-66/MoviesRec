@@ -1,3 +1,5 @@
+import time
+
 from movies.states.state import AgentState
 import sqlite3
 from pathlib import Path
@@ -52,5 +54,7 @@ def sql_filter(state: AgentState) -> dict:
             
     if not filtered_movies:
         print("No movies matched the SQL filters.")
+
+    time.sleep(2)
     
     return {"filtered_movies": filtered_movies}

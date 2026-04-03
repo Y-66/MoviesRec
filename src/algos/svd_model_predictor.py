@@ -5,6 +5,7 @@ from typing import List, Dict
 from surprise import SVD
 from surprise import dump
 from pathlib import Path
+import heapq
 
 class SVDRecommenderPredictor:
     def __init__(self, model_rel_path: str = "models/svd_model.pkl"):
@@ -50,23 +51,22 @@ def get_collaborative_candidates(
     if algo is None:
         raise ValueError("SVD 模型未加载，请先传入有效的 algo 实例。")
 
-    predictions = []
+    predict = algo.predict
 
-    # 仅对传入的 candidate_movie_ids 列表中的电影进行预测
-    for movie_id in candidate_movie_ids:
-        # 使用 SVD 模型预测该用户对该电影的评分
-        pred = algo.predict(uid=user_id, iid=movie_id)
+    # 使用生成器来按需计算得分，避免在内存中一次性分配庞大的 predictions 列表
+    # 提取 predict.est 属性作为得分
+    scores = ((movie_id, predict(uid=user_id, iid=movie_id).est)
+              for movie_id in candidate_movie_ids)
 
-        predictions.append({
-            "movie_id": int(movie_id),
-            "svd_score": round(float(pred.est), 3)  # 保留3位小数
-        })
+    # 使用 heapq.nlargest 获取前 top_k 个候选值
+    # 时间复杂度从全排序 O(N log N) 降为了 O(N log K)，极大提升性能
+    top_candidates = heapq.nlargest(top_k, scores, key=lambda x: x[1])
 
-    # 根据 svd_score 进行降序排序 (从高到低)
-    predictions.sort(key=lambda x: x["svd_score"], reverse=True)
-
-    # 截取前 top_k 个返回
-    return predictions[:top_k]
+    # 仅对待返回的 top_k 个结果构造字典格式并截断小数位，进一步节约循环时的内存分配
+    return [
+        {"movie_id": int(movie_id), "svd_score": round(float(score), 3)}
+        for movie_id, score in top_candidates
+    ]
 
 
 if __name__ == "__main__":

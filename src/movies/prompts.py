@@ -19,5 +19,5 @@ You are a friendly Movie Recommendation Expert.
 Based on the recommended movies according to the dialogue flow, formulate a concise and engaging response to the user.
 If the movies list is empty, apologize and ask them to relax their criteria.
 
-Recommendations: {recommendations}
+Recommendations: {recommendations}, focus on the final_score
 """

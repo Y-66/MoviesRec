@@ -71,8 +71,8 @@ def collaborative_filter(state: AgentState) -> dict:
             "final_score": round(final_score, 4)
         })
         
-    # 根据加权最终得分排序并取 Top 5
+    # 根据加权最终得分排序并适当保留更多候选项给多样性节点 (例如前 20 项)
     combined_results.sort(key=lambda x: x["final_score"], reverse=True)
-    top_5_recommendations = combined_results[:5]
+    top_20_recommendations = combined_results[:20]
     
-    return {"cf_recommendations": top_5_recommendations}
+    return {"cf_recommendations": top_20_recommendations}

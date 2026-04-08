@@ -7,6 +7,9 @@ from surprise import dump
 from pathlib import Path
 import heapq
 
+# 单例模式全局缓存，避免每次预测时重复加载1.3GB以上的模型导致MemoryError
+_svd_model_cache = None
+
 class SVDRecommenderPredictor:
     def __init__(self, model_rel_path: str = "models/svd_model.pkl"):
         """
@@ -30,12 +33,19 @@ class SVDRecommenderPredictor:
         """
         加载已经训练好的模型
         """
+        global _svd_model_cache
+        
         # 使用 pathlib 的 exists() 方法
         if not self.model_path.exists():
             raise FileNotFoundError(f"找不到模型文件: {self.model_path}。请先运行 train_svd.py。")
 
+        if _svd_model_cache is not None:
+            self.algo = _svd_model_cache
+            return
+
         # 转换为字符串路径以确保兼容性，并加载模型
         _, self.algo = dump.load(str(self.model_path))
+        _svd_model_cache = self.algo
         print(f"成功从 {self.model_path} 加载 SVD 模型。")
 
 

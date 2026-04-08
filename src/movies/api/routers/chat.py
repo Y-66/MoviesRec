@@ -25,6 +25,7 @@ from movies.utils.file_storage import (
     read_session_history_payload,
     save_session_history,
     session_history_path,
+    load_session_history,
 )
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -87,7 +88,9 @@ async def chat_endpoint(
         base_dir = _get_base_dir(http_request)
 
         session_id = request.session_id or "default"
-        inputs: Dict[str, Any] = {"messages": [HumanMessage(content=request.user_input)]}
+        previous_messages = load_session_history(session_id, base_dir=base_dir)
+        new_message = HumanMessage(content=request.user_input)
+        inputs: Dict[str, Any] = {"messages": previous_messages + [new_message]}
         config: RunnableConfig = {"configurable": {"thread_id": session_id}}
 
         result = agent.invoke(inputs, config)  # type: ignore[arg-type]
@@ -175,7 +178,9 @@ async def chat_stream_endpoint(request: ChatRequest, http_request: Request) -> S
         )
 
         try:
-            inputs: Dict[str, Any] = {"messages": [HumanMessage(content=request.user_input)]}
+            previous_messages = load_session_history(session_id, base_dir=base_dir)
+            new_message = HumanMessage(content=request.user_input)
+            inputs: Dict[str, Any] = {"messages": previous_messages + [new_message]}
             config: RunnableConfig = {"configurable": {"thread_id": session_id}}
 
             # Stream node-level progress and custom token events from graph nodes.

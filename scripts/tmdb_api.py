@@ -22,13 +22,16 @@ def fetch_movie_data(tmdb_id):
             poster_path = data.get('poster_path')
             poster_url = f"{IMG_BASE_URL}{poster_path}" if poster_path else None
             overview = data.get('overview')
-            return poster_url, overview
+            title = data.get('title')
+            release_date = data.get('release_date')
+            popularity = data.get('popularity')
+            return poster_url, overview, title, release_date, popularity
         elif response.status_code == 429:
             time.sleep(1)
             return fetch_movie_data(tmdb_id)
     except Exception as e:
         print(f"  [X] API 请求错误 tmdbId {tmdb_id}: {e}")
-    return None, None
+    return None, None, None, None, None
 
 
 def get_and_store_movie_details(movie_ids: List[int]) -> Dict[int, Dict[str, str]]:
@@ -53,45 +56,58 @@ def get_and_store_movie_details(movie_ids: List[int]) -> Dict[int, Dict[str, str
     cursor = conn.cursor()
 
     # 确保列存在 (首次运行时生效)
-    try:
-        cursor.execute("ALTER TABLE movies ADD COLUMN poster_url TEXT")
-        cursor.execute("ALTER TABLE movies ADD COLUMN overview TEXT")
-    except sqlite3.OperationalError:
-        pass
+    for col, col_type in [("poster_url", "TEXT"), ("overview", "TEXT"), ("title", "TEXT"), ("release_date", "TEXT"), ("popularity", "REAL")]:
+        try:
+            cursor.execute(f"ALTER TABLE movies ADD COLUMN {col} {col_type}")
+        except sqlite3.OperationalError:
+            pass
 
     results = {}
 
     for movie_id in movie_ids:
         # 1. 先查本地数据库
-        cursor.execute("SELECT tmdbId, poster_url, overview FROM movies WHERE movieId = ?", (movie_id,))
+        cursor.execute("SELECT tmdbId, poster_url, overview, title, release_date, popularity FROM movies WHERE movieId = ?", (movie_id,))
         row = cursor.fetchone()
 
         if row is None:
             # 如果数据库里根本没这部电影的数据
-            results[movie_id] = {"poster_url": None, "overview": None}
+            results[movie_id] = {
+                "poster_url": None, 
+                "overview": None,
+                "title": None,
+                "release_date": None,
+                "popularity": None,
+                "link": None
+            }
             continue
 
-        tmdb_id, poster_url, overview = row
+        tmdb_id, poster_url, overview, title, release_date, popularity = row
 
         # 2. 判断是否需要实时去 TMDb 拉取数据
         # 如果本地没有海报或简介，且存在 tmdb_id，则触发拉取
-        if (not poster_url or not overview) and tmdb_id:
+        if (not poster_url or not overview or not release_date) and tmdb_id:
             print(f"  -> 实时拉取 movieId {movie_id} (tmdbId: {tmdb_id}) 的补充数据...")
-            new_poster, new_overview = fetch_movie_data(tmdb_id)
+            new_poster, new_overview, new_title, new_release_date, new_popularity = fetch_movie_data(tmdb_id)
 
             # 3. 如果拉取成功，更新到本地数据库（持久化，下次直接读取）
-            if new_poster or new_overview:
+            if new_poster or new_overview or new_title:
                 cursor.execute("""
                                UPDATE movies
                                SET poster_url = ?,
-                                   overview   = ?
+                                   overview   = ?,
+                                   title      = ?,
+                                   release_date = ?,
+                                   popularity = ?
                                WHERE movieId = ?
-                               """, (new_poster, new_overview, movie_id))
+                               """, (new_poster, new_overview, new_title, new_release_date, new_popularity, movie_id))
                 conn.commit()
 
             # 更新当前变量以便返回给前端
             poster_url = new_poster
             overview = new_overview
+            title = new_title
+            release_date = new_release_date
+            popularity = new_popularity
 
             # 遵守 API 速率限制
             time.sleep(0.05)
@@ -100,6 +116,9 @@ def get_and_store_movie_details(movie_ids: List[int]) -> Dict[int, Dict[str, str
         results[movie_id] = {
             "poster_url": poster_url,
             "overview": overview,
+            "title": title,
+            "release_date": release_date,
+            "popularity": popularity,
             "link": f"https://www.themoviedb.org/movie/{tmdb_id}" if tmdb_id else None
         }
 
@@ -112,7 +131,7 @@ def get_and_store_movie_details(movie_ids: List[int]) -> Dict[int, Dict[str, str
 # ==========================================
 if __name__ == "__main__":
     # 假设这是你刚才用 SVD 跑出来的 Top 5 推荐电影的 ID
-    svd_recommended_ids = [2, 50, 110, 260, 318]
+    svd_recommended_ids = [3, 50, 110, 260, 318]
 
     print(f"推荐算法输出的候选电影 ID: {svd_recommended_ids}")
     print("-" * 50)
@@ -122,10 +141,13 @@ if __name__ == "__main__":
 
     # 打印最终准备返回给前端/用户界面的数据
     for m_id, info in movie_details.items():
-        print(f"Movie ID : {m_id}")
-        print(f"TMDb Link: {info['link']}")
-        print(f"Poster   : {info['poster_url']}")
+        print(f"Movie ID    : {m_id}")
+        print(f"TMDb Link   : {info['link']}")
+        print(f"Title       : {info['title']}")
+        print(f"Release Date: {info['release_date']}")
+        print(f"Popularity  : {info['popularity']}")
+        print(f"Poster      : {info['poster_url']}")
         # 截断简介，方便控制台查看
         short_overview = info['overview'][:50] + "..." if info['overview'] else "暂无简介"
-        print(f"Overview : {short_overview}")
+        print(f"Overview    : {short_overview}")
         print("-" * 50)

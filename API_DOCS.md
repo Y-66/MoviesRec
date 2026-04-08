@@ -128,11 +128,21 @@ Response 200:
   "recommendation_cards": [
     {
       "id": 101,
-      "title": "Dune"
+      "title": "Dune",
+      "release_date": "2021-09-15",
+      "popularity": 125.43,
+      "poster_url": "https://image.tmdb.org/t/p/w500/...",
+      "overview": "A mythic and emotionally charged...",
+      "link": "https://www.themoviedb.org/movie/101"
     },
     {
       "id": 233,
-      "title": "Interstellar"
+      "title": "Interstellar",
+      "release_date": "2014-11-05",
+      "popularity": 156.89,
+      "poster_url": "https://image.tmdb.org/t/p/w500/...",
+      "overview": "The adventures of a group of explorers...",
+      "link": "https://www.themoviedb.org/movie/233"
     }
   ],
   "intent_data": {

@@ -99,6 +99,39 @@ async def chat_endpoint(
         if not isinstance(recommendations, list):
             recommendations = []
 
+        # Fetch extra movie details (poster, overview, link) using tmdb_api
+        movie_ids = []
+        for rec in recommendations:
+            mid = rec.get("movieId") or rec.get("movie_id") or rec.get("id")
+            if mid is not None:
+                try:
+                    movie_ids.append(int(mid))
+                except ValueError:
+                    pass
+
+        if movie_ids:
+            try:
+                import asyncio
+                from scripts.tmdb_api import get_and_store_movie_details
+                details_map = await asyncio.to_thread(get_and_store_movie_details, movie_ids)
+                for rec in recommendations:
+                    mid = rec.get("movieId") or rec.get("movie_id") or rec.get("id")
+                    if mid is not None:
+                        try:
+                            mid_int = int(mid)
+                            if mid_int in details_map:
+                                details = details_map[mid_int]
+                                rec["poster_url"] = details.get("poster_url")
+                                rec["overview"] = details.get("overview")
+                                rec["link"] = details.get("link")
+                                rec["title"] = details.get("title") or rec.get("title")
+                                rec["release_date"] = details.get("release_date")
+                                rec["popularity"] = details.get("popularity")
+                        except ValueError:
+                            pass
+            except Exception as e:
+                print(f"Error fetching movie details from tmdb: {e}")
+
         ai_reply = next(
             (_content_to_text(msg.content) for msg in reversed(full_messages) if isinstance(msg, AIMessage)),
             "I am a Movie Recommendation Robot. How can I help you with movies today?",
@@ -243,6 +276,39 @@ async def chat_stream_endpoint(request: ChatRequest, http_request: Request) -> S
             recommendations = result.get("final_recommendations", []) or []
             if not isinstance(recommendations, list):
                 recommendations = []
+
+            # Fetch extra movie details (poster, overview, link) using tmdb_api
+            movie_ids = []
+            for rec in recommendations:
+                mid = rec.get("movieId") or rec.get("movie_id") or rec.get("id")
+                if mid is not None:
+                    try:
+                        movie_ids.append(int(mid))
+                    except ValueError:
+                        pass
+
+            if movie_ids:
+                try:
+                    import asyncio
+                    from scripts.tmdb_api import get_and_store_movie_details
+                    details_map = await asyncio.to_thread(get_and_store_movie_details, movie_ids)
+                    for rec in recommendations:
+                        mid = rec.get("movieId") or rec.get("movie_id") or rec.get("id")
+                        if mid is not None:
+                            try:
+                                mid_int = int(mid)
+                                if mid_int in details_map:
+                                    details = details_map[mid_int]
+                                    rec["poster_url"] = details.get("poster_url")
+                                    rec["overview"] = details.get("overview")
+                                    rec["link"] = details.get("link")
+                                    rec["title"] = details.get("title") or rec.get("title")
+                                    rec["release_date"] = details.get("release_date")
+                                    rec["popularity"] = details.get("popularity")
+                            except ValueError:
+                                pass
+                except Exception as e:
+                    print(f"Error fetching movie details from tmdb: {e}")
 
             stage_trace = observed_stages or _infer_stage_trace(result)
             latency_ms = int((time.perf_counter() - started_at) * 1000)

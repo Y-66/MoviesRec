@@ -1,5 +1,7 @@
 # MoviesRec - Conversational Movie Recommendation AI System
 
+🥂 UI repository: [https://github.com/Y-66/movies-webui](https://github.com/Y-66/movies-webui)
+
 MoviesRec is an intelligent, dialogue-driven movie recommendation system powered by LLMs and Collaborative Filtering algorithms. It combines the reasoning and conversational capabilities of Large Language Models (orchestrated via LangGraph) with the robust personalization of traditional recommendation algorithms (Singular Value Decomposition from scikit-surprise). 
 
 The system understands user intentions (e.g., "Find me a sci-fi movie like Inception"), retrieves and filters metadata via SQL, ranks candidates using SVD-based collaborative filtering, enhances results through diversity filtering, and finally summarizes the recommendations into a natural, conversational response.

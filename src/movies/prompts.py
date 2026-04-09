@@ -11,7 +11,7 @@ If the intent is "recommendation", extract any explicit constraints into "hard_f
 - "year": e.g., 2020, 1990s
 - "rating": Minimum rating expected, e.g., 4.0
 
-If no specific constraints are mentioned, "hard_filters" should be an empty dictionary {}.
+If no specific constraints are mentioned and the user wants a general recommendation based on their profile or preferences (e.g., "you know my preference, give some movies that fit my type"), "hard_filters" MUST be {"all": true} so that the system knows to fetch all movies for collaborative filtering.
 
 If the intent is "unrelated", provide a friendly, conversational response in the "response" field. Assume the persona of a helpful, cheerful Movie Recommendation Robot.
 

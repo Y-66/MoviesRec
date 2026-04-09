@@ -29,8 +29,9 @@ def sql_filter(state: AgentState) -> dict:
         query += " AND avg_rating >= ?"
         params.append(float(hard_filters["rating"]))
         
-    # Limit results to avoid massive payloads
-    query += " ORDER BY rating_count DESC LIMIT 20"
+    # 不再限制条数，直接获取全量匹配数据交给下游 CF 节点打分
+    if not hard_filters.get("all"):
+        query += " ORDER BY rating_count DESC"
     
     filtered_movies = []
     try:
@@ -53,7 +54,19 @@ def sql_filter(state: AgentState) -> dict:
             conn.close()
             
     if not filtered_movies:
-        print("No movies matched the SQL filters.")
+        print("No movies matched the SQL filters. Fetching all available movies for collaborative filtering.")
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM movies")
+            for row in cursor.fetchall():
+                filtered_movies.append(dict(row))
+        except Exception as e:
+            print(f"Error querying database for fallback: {e}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
 
     time.sleep(2)
     

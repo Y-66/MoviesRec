@@ -7,9 +7,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import hstack, vstack, csr_matrix
 
-from algos.svd_model_predictor import SVDRecommenderPredictor, get_collaborative_candidates
-
-BASE_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = Path(__file__).resolve().parents[1]
 DB_PATH = BASE_DIR / "db" / "movies_data.db"
 MOVIES_PATH = BASE_DIR / "datasets" / "movies_aggregated.csv"
 
@@ -43,9 +41,11 @@ def load_movie_features():
     
     return movie_vectors, movie_id_to_index
 
+from sklearn.cluster import KMeans
+
 def calculate_single_user_profile(uid, user_ratings, movie_vectors, movie_id_to_index):
     """
-    单独抽离出的用户画像计算核心函数，可供离线脚本使用。
+    使用聚类算法（KMeans）对用户历史评分行为提取出的特征图谱进行聚类，返回用户的多个兴趣中心。
     """
     if user_ratings.empty:
         return None
@@ -80,12 +80,19 @@ def calculate_single_user_profile(uid, user_ratings, movie_vectors, movie_id_to_
     weights_array = (base_weights * decays).reshape(-1, 1)
     
     weighted_vectors = vectors_stacked * weights_array
-    weight_sum = np.sum(np.abs(weights_array))
+
+    # 聚类的簇数量不能超过样本数
+    n_samples = weighted_vectors.shape[0]
+    n_clusters = min(3, n_samples)
     
-    if weight_sum == 0:
-        user_vector = np.mean(vectors_stacked, axis=0)
-    else:
-        user_vector = np.sum(weighted_vectors, axis=0) / weight_sum
+    if n_clusters < 1:
+        return np.mean(vectors_stacked, axis=0)
+        
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+    kmeans.fit(weighted_vectors)
+    
+    # 返回用户的多个兴趣聚类中心，作为新的用户画像
+    user_vector = kmeans.cluster_centers_
         
     return user_vector
 
@@ -103,15 +110,20 @@ def rank_by_content_similarity(user_id, candidate_movie_ids):
     ratings = pd.read_csv(ratings_path, usecols=['userId', 'movieId', 'rating', 'timestamp'], dtype={'userId': np.int32, 'movieId': np.int32, 'rating': np.float32})
     user_ratings = ratings[ratings['userId'] == user_id]
     
-    # 3. 实时计算当前用户的特征画像
+    # 3. 实时计算当前用户的特征画像 (此时 user_vector 包含多个聚类中心)
     user_vector = calculate_single_user_profile(user_id, user_ratings, movie_vectors, movie_id_to_index)
     
     results = []
     for movie_id in candidate_movie_ids:
         if movie_id in movie_id_to_index and user_vector is not None:
             movie_vector = movie_vectors[movie_id_to_index[movie_id]].toarray()
-            # user_vector 放平(reshape)便于跟 movie_vector 计算余弦相似度
-            similarity = cosine_similarity(user_vector.reshape(1, -1), movie_vector)[0][0]
+            # 计算候选电影图谱与用户的多个聚类中心的相似度，并取最大值
+            if user_vector.ndim == 2:
+                similarities = cosine_similarity(user_vector, movie_vector)
+                similarity = np.max(similarities)
+            else:
+                # 兼容聚类降级为1维的情况
+                similarity = cosine_similarity(user_vector.reshape(1, -1), movie_vector)[0][0]
         else:
             similarity = 0.0
 

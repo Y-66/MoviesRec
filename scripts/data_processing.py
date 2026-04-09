@@ -2,10 +2,29 @@ import pandas as pd
 import sqlite3
 import re
 
-# Read data
-movies = pd.read_csv('movies.csv')
-ratings = pd.read_csv('ratings.csv')
-tags = pd.read_csv('tags.csv')
+# --- Data Loading ---
+# Read raw data (from the 'datasets' directory)
+movies = pd.read_csv('datasets/movies.csv')
+ratings = pd.read_csv('datasets/ratings.csv')
+tags = pd.read_csv('datasets/tags.csv')
+links = pd.read_csv('datasets/links.csv')
+
+# --- Data Cleaning ---
+print("Starting data cleaning...")
+# Drop exact duplicates from all dataframes
+movies.drop_duplicates(inplace=True)
+ratings.drop_duplicates(inplace=True)
+tags.drop_duplicates(inplace=True)
+links.drop_duplicates(inplace=True)
+
+# Remove records with missing critical identifiers or values
+movies.dropna(subset=['movieId', 'title'], inplace=True)
+ratings.dropna(subset=['userId', 'movieId', 'rating'], inplace=True)
+links.dropna(subset=['movieId'], inplace=True)
+
+# Ensure proper data types (coerce invalid timestamps to NaN)
+ratings['timestamp'] = pd.to_numeric(ratings['timestamp'], errors='coerce')
+tags['timestamp'] = pd.to_numeric(tags['timestamp'], errors='coerce')
 
 # 1. Process movies
 # Extract year from title
@@ -37,12 +56,16 @@ movie_tags = tags.groupby('movieId').agg(
 movie_data = movies.merge(movie_ratings, on='movieId', how='left')
 movie_data = movie_data.merge(movie_tags, on='movieId', how='left')
 
+# --- Data Integration ---
+# Merge external identifiers (imdbId, tmdbId) from links data
+movie_data = movie_data.merge(links, on='movieId', how='left')
+
 # Fill NaN
 movie_data['rating_count'] = movie_data['rating_count'].fillna(0).astype(int)
 movie_data['tags'] = movie_data['tags'].fillna('')
 
 # Save movie aggregated data
-movie_data.to_csv('movies_aggregated.csv', index=False)
+movie_data.to_csv('datasets/movies_aggregated.csv', index=False)
 
 # 2. Aggregate user data (unique userId)
 # User ratings stats
@@ -72,10 +95,10 @@ user_data['tag_count'] = user_data['tag_count'].fillna(0).astype(int)
 user_data['tags_given'] = user_data['tags_given'].fillna('')
 
 # Save user aggregated data
-user_data.to_csv('users_aggregated.csv', index=False)
+user_data.to_csv('datasets/users_aggregated.csv', index=False)
 
 # 3. Create SQLite Database and insert data
-conn = sqlite3.connect('movies_data.db')
+conn = sqlite3.connect('db/movies_data.db')
 
 # Write to database
 movie_data.to_sql('movies', conn, if_exists='replace', index=False)

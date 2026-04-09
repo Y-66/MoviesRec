@@ -48,7 +48,7 @@ MoviesRec/
 ├── datasets/                       # Raw/Aggregated data (movies.csv, ratings.csv, tags.csv, etc.)
 ├── db/                             # SQLite database files
 ├── models/                         # Serialized ML models (e.g., svd_model.pkl)
-├── scripts/                        # Utility scripts (e.g., syncing TMDB API data)
+├── scripts/                        # Utility scripts (e.g., data_processing.py script)
 ├── src/
 │   ├── algos/                      # 🧠 CORE RECOMMENDATION ALGORITHMS (See details below)
 │   └── movies/                     # 🌐 WEB & LANGGRAPH APPLICATION

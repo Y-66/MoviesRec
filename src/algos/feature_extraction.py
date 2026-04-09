@@ -3,9 +3,9 @@ import numpy as np
 import sqlite3
 from pathlib import Path
 from functools import lru_cache
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from scipy.sparse import hstack, vstack, csr_matrix
+from scipy.sparse import vstack, csr_matrix
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DB_PATH = BASE_DIR / "db" / "movies_data.db"
@@ -20,11 +20,6 @@ def load_movie_features():
     # Read data
     movies = pd.read_csv(MOVIES_PATH)
 
-    # Genres → One-hot (sparse)
-    movies['genres'] = movies['genres'].fillna('')
-    cv = CountVectorizer(token_pattern=r'[^|]+')
-    genres_sparse = cv.fit_transform(movies['genres'])
-
     movie_ids = movies['movieId'].values
 
     # Tags → TF-IDF (sparse)
@@ -35,8 +30,8 @@ def load_movie_features():
     )
     tfidf_matrix = tfidf.fit_transform(movies['tags'])
 
-    # Merge features
-    movie_vectors = hstack([genres_sparse, tfidf_matrix]).tocsr()
+    # Assign features
+    movie_vectors = tfidf_matrix.tocsr() # type: ignore
     movie_id_to_index = {mid: idx for idx, mid in enumerate(movie_ids)}
     
     return movie_vectors, movie_id_to_index

@@ -29,7 +29,7 @@ def sql_filter(state: AgentState) -> dict:
         query += " AND avg_rating >= ?"
         params.append(float(hard_filters["rating"]))
         
-    # 不再限制条数，直接获取全量匹配数据交给下游 CF 节点打分
+    # No longer limit the number of records, directly pass all matching data downstream for CF node scoring
     if not hard_filters.get("all"):
         query += " ORDER BY rating_count DESC"
     

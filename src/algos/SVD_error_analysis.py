@@ -28,7 +28,7 @@ class SVDErrorAnalyzer:
             raise FileNotFoundError(f"Ratings data not found at: {self.ratings_path}")
 
         print("1. Loading dataset (using top 200,000 rows for analysis)...")
-        # 读取20万条数据以保证有足够的测试样本
+        # Read 200,000 rows to ensure enough test samples
         df = pd.read_csv(str(self.ratings_path), usecols=['userId', 'movieId', 'rating'], nrows=200000)
 
         # Calculate frequencies to analyze cold-start problems later
@@ -45,7 +45,7 @@ class SVDErrorAnalyzer:
         trainset, testset = train_test_split(data, test_size=0.2, random_state=42)
 
         print("3. Training SVD model with balanced parameters (n_factors=50, n_epochs=20)...")
-        # 使用上一轮性价比最高的参数组合
+        # Use the most cost-effective parameter combination from previous iteration
         algo = SVD(n_factors=50, n_epochs=20, lr_all=0.005, reg_all=0.02)
         algo.fit(trainset)
 

@@ -20,15 +20,15 @@ def diversity_filter(state: AgentState) -> dict:
         
     print(f"Applying diversity and novelty to {len(cf_recommendations)} recommendations.")
     
-    # 建立查找字典，通过 movie_id 查找完整属性
+    # Build a lookup dictionary to find full attributes by movie_id
     movie_features = {}
     for movie in filtered_movies:
         movie_id = movie.get("movieId")
         if movie_id is not None:
             movie_features[movie_id] = movie
             
-    # 【策略一】Novelty (新颖度)
-    # 我们基于 rating_count (打分人数) 来衡量流行度。我们希望给冷门电影一定的分数补偿（长尾推荐）。
+    # [Strategy 1] Novelty
+    # We use rating_count (number of ratings) to measure popularity. We want to give a score compensation to niche movies (long-tail recommendation).
     max_rating_count = 1
     for item in cf_recommendations:
         m_id = item.get("movie_id")
@@ -45,29 +45,29 @@ def diversity_filter(state: AgentState) -> dict:
         rating_count = features.get("rating_count", 0) or 0
         original_score = item.get("final_score", 0.0)
         
-        # Novelty 分数：流行度越低，新颖度越高。用对数衰减平滑
+        # Novelty score: The lower the popularity, the higher the novelty. Smooth with logarithmic decay
         novelty_score = 1.0 - (math.log1p(rating_count) / math.log1p(max_rating_count))
         
         new_score = original_score + (novelty_score * NOVELTY_WEIGHT)
         
-        # 提取 genres 用于多样性计算
+        # Extract genres for diversity calculation
         genres_str = features.get("genres", "")
         genres_set = set(genres_str.split("|")) if genres_str else set()
         
-        # 创建新的字典以防修改原始 state 数据
+        # Create a new dictionary to prevent modifying original state data
         cand_dict = dict(item)
         cand_dict["novelty_score"] = round(novelty_score, 4)
         cand_dict["adjusted_score"] = round(new_score, 4)
-        cand_dict["_genres"] = genres_set # 内部使用
+        cand_dict["_genres"] = genres_set # For internal use
         
         novelty_adjusted_cands.append(cand_dict)
         
-    # 根据加入 novelty 后的总分初步排序
+    # Preliminary sorting based on total score after adding novelty
     novelty_adjusted_cands.sort(key=lambda x: x["adjusted_score"], reverse=True)
     
-    # 【策略二】Diversity (多样性 - MMR)
-    # 基于分类(genres)的 Jaccard 相似度，惩罚与已选电影过于相似的候选电影。
-    DIVERSITY_WEIGHT = 0.5  # 多样性权重 lambda
+    # [Strategy 2] Diversity (MMR)
+    # Based on Jaccard similarity of genres, penalize candidate movies that are too similar to already selected movies.
+    DIVERSITY_WEIGHT = 0.5  # Diversity weight lambda
     TOP_K = min(5, len(novelty_adjusted_cands))
     
     selected_movies = []
@@ -75,7 +75,7 @@ def diversity_filter(state: AgentState) -> dict:
     
     while len(selected_movies) < TOP_K and candidates:
         if not selected_movies:
-            # 第一部电影总是当前分数最高的
+            # The first movie is always the one with the highest current score
             best_cand = candidates.pop(0)
             best_cand["mmr_score"] = best_cand["adjusted_score"]
             selected_movies.append(best_cand)
@@ -85,7 +85,7 @@ def diversity_filter(state: AgentState) -> dict:
         best_cand_index = -1
         
         for idx, cand in enumerate(candidates):
-            # 计算当前候选者与已选电影的最大相似度
+            # Calculate the maximum similarity between the current candidate and globally selected movies
             max_sim = 0.0
             for selected in selected_movies:
                 sim = jaccard_similarity(cand["_genres"], selected["_genres"])
@@ -104,12 +104,12 @@ def diversity_filter(state: AgentState) -> dict:
         best_cand["mmr_score"] = round(best_mmr_score, 4)
         selected_movies.append(best_cand)
         
-    # 清理内部字段
+    # Clean up internal fields
     for item in selected_movies:
         if "_genres" in item:
             del item["_genres"]
             
-    # 为了防重和格式一致，整理要输出的结果
+    # Organize output results for deduplication and consistent formatting
     print(f"Produced {len(selected_movies)} final diverse recommendations.")
     
     return {"final_recommendations": selected_movies}

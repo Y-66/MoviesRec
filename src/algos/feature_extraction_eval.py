@@ -7,13 +7,13 @@ from scipy.sparse import hstack
 from collections import defaultdict
 
 # =========================
-# 1. 加载数据（保留你的路径）
+# 1. Load Data (Keep original path)
 # =========================
 movies = pd.read_csv(r"C:\Users\21977\Desktop\MoviesRec-main\MoviesRec-main\datasets\datasets\movies_aggregated.csv")
 ratings = pd.read_csv(r"C:\Users\21977\Desktop\MoviesRec-main\MoviesRec-main\datasets\datasets\ratings.csv")
 
 # =========================
-# 2. 三种特征工程方法
+# 2. Three Feature Engineering Methods
 # =========================
 def build_genre_only():
     cv = CountVectorizer(token_pattern=r'[^|]+')
@@ -29,7 +29,7 @@ def build_hybrid(max_features=5000):
     return hstack([genre, tfidf])
 
 # =========================
-# 3. 用户画像（修复 np.matrix🔥）
+# 3. User Profile (Fix np.matrix🔥)
 # =========================
 def get_user_profile(user_id, movie_vectors):
     user_data = ratings[ratings['userId'] == user_id]
@@ -42,10 +42,10 @@ def get_user_profile(user_id, movie_vectors):
 
     user_vec = movie_vectors[indices].mean(axis=0)
 
-    return np.array(user_vec)   # ✅ 修复关键
+    return np.array(user_vec)   # ✅ Critical fix
 
 # =========================
-# 4. 推荐函数（修复 sparse🔥）
+# 4. Recommendation Function (Fix sparse🔥)
 # =========================
 def recommend(user_id, movie_vectors, top_k=10):
     user_vec = get_user_profile(user_id, movie_vectors)
@@ -56,7 +56,7 @@ def recommend(user_id, movie_vectors, top_k=10):
     scores = []
 
     for i, mid in enumerate(movies['movieId']):
-        movie_vec = movie_vectors[i].toarray()   # ✅ 修复关键
+        movie_vec = movie_vectors[i].toarray()   # ✅ Critical fix
         sim = cosine_similarity(user_vec, movie_vec)[0][0]
         scores.append((mid, sim))
 
@@ -64,7 +64,7 @@ def recommend(user_id, movie_vectors, top_k=10):
     return [m for m, _ in scores[:top_k]]
 
 # =========================
-# 5. 评估指标
+# 5. Evaluation Metrics
 # =========================
 def precision_at_k(recommended, relevant):
     if len(recommended) == 0:
@@ -77,7 +77,7 @@ def recall_at_k(recommended, relevant):
     return len(set(recommended) & set(relevant)) / len(relevant)
 
 # =========================
-# 6. 实验
+# 6. Experiments
 # =========================
 def run_experiment():
     users = ratings['userId'].unique()[:50]
@@ -112,7 +112,7 @@ def run_experiment():
     return pd.DataFrame(results)
 
 # =========================
-# 7. 画图（增强版🔥）
+# 7. Visualization (Enhanced🔥)
 # =========================
 def plot_results(df):
     plt.figure()
@@ -129,7 +129,7 @@ def plot_results(df):
     plt.ylabel("Recall")
     plt.show()
 
-    # 🔥 新增：对比图（加分）
+    # 🔥 Added: Comparison Chart (Bonus)
     plt.figure()
     x = np.arange(len(df['method']))
     width = 0.35
@@ -143,7 +143,7 @@ def plot_results(df):
     plt.show()
 
 # =========================
-# 8. 主程序
+# 8. Main Program
 # =========================
 if __name__ == "__main__":
     df = run_experiment()
